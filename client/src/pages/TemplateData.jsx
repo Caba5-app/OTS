@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 
+// A partir de esta cantidad de columnas la tabla se desplaza en vez de apretarse.
+const WIDE_COLUMNS = 8;
+
 export default function TemplateData() {
   const { id } = useParams();
   const [template, setTemplate] = useState(null);
@@ -60,6 +63,7 @@ export default function TemplateData() {
       {activeSection && activeRows.length === 0 && <p>Todavía no hay datos cargados en "{activeSection.name}".</p>}
 
       {activeSection && activeRows.length > 0 && (
+        <div className={`table-scroll ${activeSection.fields.length > WIDE_COLUMNS ? 'wide' : ''}`}>
         <table className="data-table">
           <thead>
             <tr>
@@ -86,6 +90,7 @@ export default function TemplateData() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useDependenciaAuth } from '../DependenciaAuthContext';
 
+// A partir de esta cantidad de columnas la tabla se desplaza en vez de apretarse.
+const WIDE_COLUMNS = 8;
+
 function emptyRow(fields) {
   const row = {};
   for (const f of fields) row[f.name] = '';
@@ -35,6 +38,7 @@ export default function PublicFillPage() {
 
   const activeSection = template?.sections.find((s) => s.id === activeSectionId);
   const activeRows = activeSectionId != null ? rowsBySection[activeSectionId] || [] : [];
+  const isWide = (activeSection?.fields.length || 0) > WIDE_COLUMNS;
 
   function updateCell(rowIndex, fieldName, value) {
     setRowsBySection((prev) => ({
@@ -110,7 +114,8 @@ export default function PublicFillPage() {
 
       {activeSection && (
         <>
-          <div className="table-scroll">
+          {isWide && <p className="scroll-hint">Esta hoja tiene {activeSection.fields.length} columnas: desplazate hacia los costados para completarlas.</p>}
+          <div className={`table-scroll ${isWide ? 'wide' : ''}`}>
             <table className="data-table editable">
               <thead>
                 <tr>

@@ -5,3 +5,4 @@ client/dist/
 *.log
 .env
 .claude/settings.local.json
+.playwright-mcp/

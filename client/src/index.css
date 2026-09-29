@@ -300,6 +300,56 @@ button:disabled {
   border-radius: 12px;
 }
 
+/* Hojas con muchas columnas (ej. OT 86): cada columna conserva un ancho cómodo
+   y la tabla se desplaza dentro de su recuadro, con encabezado y primera
+   columna fijos para no perder la referencia. */
+.table-scroll.wide {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+
+.table-scroll.wide .data-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+  overflow: visible;
+  border: none;
+  border-radius: 0;
+}
+
+.table-scroll.wide .data-table th,
+.table-scroll.wide .data-table td {
+  min-width: 170px;
+  max-width: 320px;
+}
+
+.table-scroll.wide .data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.table-scroll.wide .data-table th:first-child,
+.table-scroll.wide .data-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  box-shadow: 1px 0 0 var(--border);
+}
+
+.table-scroll.wide .data-table thead th:first-child {
+  z-index: 3;
+  background: var(--bg-soft);
+}
+
+.scroll-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
 /* Grid-table: encabezado y filas comparten un único grid, así las columnas
    siempre quedan alineadas sin importar qué contenido tenga cada celda. */
 .grid-table {
