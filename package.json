@@ -1,0 +1,16 @@
+{
+  "name": "planillas-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev:client": "npm run dev --prefix client",
+    "build:client": "npm run build --prefix client"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "exceljs": "^4.4.0",
+    "dotenv": "^16.4.5"
+  }
+}
