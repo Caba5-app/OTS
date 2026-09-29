@@ -5,19 +5,18 @@ const { requireAdmin } = require('./auth');
 const router = express.Router();
 
 // --- Admin: ver filas cargadas de una plantilla (todas las hojas, con su nombre de hoja) ---
-router.get('/templates/:id/rows', requireAdmin, (req, res) => {
-  const template = db.prepare('SELECT id FROM templates WHERE id = ?').get(req.params.id);
+router.get('/templates/:id/rows', requireAdmin, async (req, res) => {
+  const template = await db.get('SELECT id FROM templates WHERE id = $1', [req.params.id]);
   if (!template) return res.status(404).json({ error: 'No encontrada' });
 
-  const rows = db
-    .prepare(
-      `SELECT rows.id, rows.section_id, sections.name AS section_name, rows.submitted_by, rows.submitted_at, rows.data
-       FROM rows
-       JOIN sections ON sections.id = rows.section_id
-       WHERE rows.template_id = ?
-       ORDER BY rows.submitted_at DESC`
-    )
-    .all(template.id);
+  const rows = await db.all(
+    `SELECT rows.id, rows.section_id, sections.name AS section_name, rows.submitted_by, rows.submitted_at, rows.data
+     FROM rows
+     JOIN sections ON sections.id = rows.section_id
+     WHERE rows.template_id = $1
+     ORDER BY rows.submitted_at DESC, rows.id DESC`,
+    [template.id]
+  );
 
   res.json(
     rows.map((r) => ({
@@ -32,8 +31,8 @@ router.get('/templates/:id/rows', requireAdmin, (req, res) => {
 });
 
 // --- Admin: eliminar una fila cargada ---
-router.delete('/rows/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM rows WHERE id = ?').run(req.params.id);
+router.delete('/rows/:id', requireAdmin, async (req, res) => {
+  await db.run('DELETE FROM rows WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 

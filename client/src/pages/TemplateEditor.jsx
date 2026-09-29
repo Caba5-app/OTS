@@ -37,6 +37,7 @@ export default function TemplateEditor() {
       setHeaderColor(t.header_color || '#8B5CF6');
       setSections(
         t.sections.map((s) => ({
+          id: s.id,
           name: s.name,
           fields: s.fields.map((f) => ({
             name: f.name,
@@ -59,6 +60,8 @@ export default function TemplateEditor() {
   }
 
   function removeSection(sectionIndex) {
+    const section = sections[sectionIndex];
+    if (section.id && !confirm(`Al guardar se van a borrar la hoja "${section.name}" y todos los datos cargados en ella. ¿Continuar?`)) return;
     setSections((prev) => prev.filter((_, i) => i !== sectionIndex));
   }
 
@@ -94,6 +97,7 @@ export default function TemplateEditor() {
         description,
         header_color: headerColor,
         sections: sections.map((s) => ({
+          id: s.id,
           name: s.name,
           fields: s.fields.map((f) => ({
             name: f.name,

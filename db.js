@@ -1,52 +1,65 @@
-﻿const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 
-const db = new DatabaseSync(path.join(__dirname, 'data.db'));
+if (!process.env.DATABASE_URL) {
+  throw new Error('Falta DATABASE_URL (cadena de conexión de Supabase) en las variables de entorno');
+}
 
-db.exec('PRAGMA foreign_keys = ON;');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Supabase exige SSL; una base local de prueba no.
+  ssl: /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
+  // En Vercel cada función abre pocas conexiones; el pooler de Supabase se encarga del resto.
+  max: 3,
+});
 
-db.exec(`
+// Fecha/hora de Buenos Aires como texto, igual que se mostraba antes en la app y el Excel.
+const NOW_AR = "to_char(now() AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD HH24:MI:SS')";
+
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS templates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
     header_color TEXT NOT NULL DEFAULT '#8B5CF6',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT ${NOW_AR}
   );
 
   CREATE TABLE IF NOT EXISTS sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS fields (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL DEFAULT 'text',
-    required INTEGER NOT NULL DEFAULT 0,
+    required BOOLEAN NOT NULL DEFAULT FALSE,
     help_text TEXT,
     options TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE TABLE IF NOT EXISTS rows (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
-    submitted_by TEXT NOT NULL,
-    submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
-    data TEXT NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS dependencias (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT ${NOW_AR}
+  );
+
+  CREATE TABLE IF NOT EXISTS rows (
+    id SERIAL PRIMARY KEY,
+    template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+    dependencia_id INTEGER REFERENCES dependencias(id) ON DELETE SET NULL,
+    submitted_by TEXT NOT NULL,
+    submitted_at TEXT NOT NULL DEFAULT ${NOW_AR},
+    data TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS dependencia_templates (
@@ -54,54 +67,51 @@ db.exec(`
     template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
     PRIMARY KEY (dependencia_id, template_id)
   );
-`);
 
-// Migración: agrega header_color si la tabla templates ya existía de antes
-try {
-  db.exec("ALTER TABLE templates ADD COLUMN header_color TEXT NOT NULL DEFAULT '#8B5CF6'");
-} catch (err) {
-  // la columna ya existe
-}
+  CREATE INDEX IF NOT EXISTS rows_template_idx ON rows (template_id);
+  CREATE INDEX IF NOT EXISTS rows_section_idx ON rows (section_id);
+`;
 
-// Migración: agrega section_id a fields y rows si ya existían de antes
-try {
-  db.exec('ALTER TABLE fields ADD COLUMN section_id INTEGER REFERENCES sections(id)');
-} catch (err) {
-  // la columna ya existe
-}
-try {
-  db.exec('ALTER TABLE rows ADD COLUMN section_id INTEGER REFERENCES sections(id)');
-} catch (err) {
-  // la columna ya existe
-}
-
-// Migración: agrega dependencia_id a rows si ya existía de antes
-try {
-  db.exec('ALTER TABLE rows ADD COLUMN dependencia_id INTEGER REFERENCES dependencias(id)');
-} catch (err) {
-  // la columna ya existe
-}
-
-// Migración: crea una "Hoja 1" por defecto para plantillas que tenían campos sin sección
-{
-  const templatesWithoutSections = db
-    .prepare(
-      `SELECT DISTINCT template_id FROM fields WHERE section_id IS NULL
-       UNION
-       SELECT DISTINCT template_id FROM rows WHERE section_id IS NULL`
-    )
-    .all();
-
-  const insertSection = db.prepare('INSERT INTO sections (template_id, name, sort_order) VALUES (?, ?, 0)');
-  const updateFields = db.prepare('UPDATE fields SET section_id = ? WHERE template_id = ? AND section_id IS NULL');
-  const updateRows = db.prepare('UPDATE rows SET section_id = ? WHERE template_id = ? AND section_id IS NULL');
-
-  for (const { template_id: templateId } of templatesWithoutSections) {
-    const info = insertSection.run(templateId, 'Hoja 1');
-    const sectionId = info.lastInsertRowid;
-    updateFields.run(sectionId, templateId);
-    updateRows.run(sectionId, templateId);
+// Se crea el esquema una sola vez por arranque (en Vercel, una vez por instancia).
+let ready;
+function ensureSchema() {
+  if (!ready) {
+    ready = pool.query(SCHEMA).catch((err) => {
+      ready = null;
+      throw err;
+    });
   }
+  return ready;
 }
+
+// Helpers: `q` sirve tanto para el pool como para un cliente dentro de una transacción.
+function wrap(q) {
+  return {
+    all: async (sql, params = []) => (await q.query(sql, params)).rows,
+    get: async (sql, params = []) => (await q.query(sql, params)).rows[0],
+    run: (sql, params = []) => q.query(sql, params),
+  };
+}
+
+const db = wrap(pool);
+
+// Ejecuta fn(tx) dentro de una transacción; si algo falla, se deshace todo.
+db.transaction = async (fn) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(wrap(client));
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+db.ensureSchema = ensureSchema;
+db.pool = pool;
 
 module.exports = db;

@@ -1,6 +1,7 @@
 // Carga en la app las plantillas simplificadas de las planillas de C:\Users\vitur\Documents\VX.
 // Uso: node scripts/cargar-plantillas-vx.js
 // Si ya existe una plantilla con el mismo nombre, la saltea (se puede correr más de una vez).
+require('dotenv').config();
 const db = require('../db');
 const slugify = require('../slugify');
 
@@ -502,52 +503,58 @@ const PLANTILLAS = [
 ];
 
 // ---------- Inserción ----------
-const findByName = db.prepare('SELECT id FROM templates WHERE name = ?');
-const slugExists = db.prepare('SELECT id FROM templates WHERE slug = ?');
-const insertTemplate = db.prepare('INSERT INTO templates (name, slug, description) VALUES (?, ?, ?)');
-const insertSection = db.prepare('INSERT INTO sections (template_id, name, sort_order) VALUES (?, ?, ?)');
-const insertField = db.prepare(
-  'INSERT INTO fields (template_id, section_id, name, type, required, help_text, options, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-);
-
-function uniqueSlug(base) {
+async function uniqueSlug(tx, base) {
   let slug = slugify(base);
   let suffix = 2;
-  while (slugExists.get(slug)) {
+  while (await tx.get('SELECT id FROM templates WHERE slug = $1', [slug])) {
     slug = `${slugify(base)}-${suffix}`;
     suffix += 1;
   }
   return slug;
 }
 
-db.exec('BEGIN');
-try {
-  for (const p of PLANTILLAS) {
-    if (findByName.get(p.name)) {
-      console.log(`- Ya existe, se saltea: ${p.name}`);
-      continue;
-    }
-    const templateId = insertTemplate.run(p.name, uniqueSlug(p.name), `Basada en ${p.source}`).lastInsertRowid;
-    p.sections.forEach((s, sIndex) => {
-      const sectionId = insertSection.run(templateId, s.name, sIndex).lastInsertRowid;
-      s.fields.forEach((f, fIndex) => {
-        insertField.run(
-          templateId,
-          sectionId,
-          f.name,
-          f.type,
-          f.required ? 1 : 0,
-          f.help_text,
-          f.type === 'select' ? JSON.stringify(f.options) : null,
-          fIndex
+async function main() {
+  await db.ensureSchema();
+  await db.transaction(async (tx) => {
+    for (const p of PLANTILLAS) {
+      if (await tx.get('SELECT id FROM templates WHERE name = $1', [p.name])) {
+        console.log(`- Ya existe, se saltea: ${p.name}`);
+        continue;
+      }
+      const template = await tx.get(
+        'INSERT INTO templates (name, slug, description) VALUES ($1, $2, $3) RETURNING id',
+        [p.name, await uniqueSlug(tx, p.name), `Basada en ${p.source}`]
+      );
+      for (const [sIndex, s] of p.sections.entries()) {
+        const section = await tx.get(
+          'INSERT INTO sections (template_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id',
+          [template.id, s.name, sIndex]
         );
-      });
-    });
-    const columnas = p.sections.reduce((n, s) => n + s.fields.length, 0);
-    console.log(`+ ${p.name} (${p.sections.length} hoja/s, ${columnas} columnas)`);
-  }
-  db.exec('COMMIT');
-} catch (err) {
-  db.exec('ROLLBACK');
-  throw err;
+        for (const [fIndex, f] of s.fields.entries()) {
+          await tx.run(
+            'INSERT INTO fields (template_id, section_id, name, type, required, help_text, options, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+            [
+              template.id,
+              section.id,
+              f.name,
+              f.type,
+              f.required,
+              f.help_text,
+              f.type === 'select' ? JSON.stringify(f.options) : null,
+              fIndex,
+            ]
+          );
+        }
+      }
+      const columnas = p.sections.reduce((n, s) => n + s.fields.length, 0);
+      console.log(`+ ${p.name} (${p.sections.length} hoja/s, ${columnas} columnas)`);
+    }
+  });
 }
+
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => db.pool.end());
