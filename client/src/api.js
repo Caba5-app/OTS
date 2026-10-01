@@ -25,6 +25,8 @@ export const api = {
 
   getRows: (templateId) => request(`/templates/${templateId}/rows`),
   deleteRow: (id) => request(`/rows/${id}`, { method: 'DELETE' }),
+  clearTemplateRows: (templateId) => request(`/templates/${templateId}/rows`, { method: 'DELETE' }),
+  clearAllRows: () => request('/rows', { method: 'DELETE' }),
 
   listDependencias: () => request('/dependencias'),
   createDependencia: (payload) => request('/dependencias', { method: 'POST', body: JSON.stringify(payload) }),

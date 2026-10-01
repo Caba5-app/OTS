@@ -35,6 +35,32 @@ export default function AdminDashboard() {
     load();
   }
 
+  async function handleClearAll() {
+    const total = templates.reduce((n, t) => n + t.rowCount, 0);
+    if (total === 0) {
+      alert('No hay datos cargados para borrar.');
+      return;
+    }
+    const answer = prompt(
+      `Se van a borrar las ${total} filas cargadas en todas las plantillas.\n` +
+        'Las plantillas, las dependencias y las OTs asignadas NO se borran.\n' +
+        'Esta acción no se puede deshacer: descargá antes los Excel que necesites.\n\n' +
+        'Para confirmar, escribí BORRAR:'
+    );
+    if (answer === null) return;
+    if (answer.trim().toUpperCase() !== 'BORRAR') {
+      alert('No se borró nada: no escribiste BORRAR.');
+      return;
+    }
+    try {
+      const result = await api.clearAllRows();
+      alert(`Listo: se borraron ${result.deleted} filas.`);
+    } catch (err) {
+      setError(err.message);
+    }
+    load();
+  }
+
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -52,6 +78,7 @@ export default function AdminDashboard() {
         <div>
           <Link to="/admin/templates/new" className="button">+ Nueva plantilla</Link>
           <Link to="/admin/dependencias" className="link-button">Dependencias</Link>
+          <button className="link-button danger" onClick={handleClearAll}>Limpiar todos los datos</button>
           <button className="link-button" onClick={handleLogout}>Cerrar sesión</button>
         </div>
       </header>

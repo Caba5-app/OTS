@@ -30,6 +30,19 @@ router.get('/templates/:id/rows', requireAdmin, async (req, res) => {
   );
 });
 
+// --- Admin: vaciar las filas cargadas de una plantilla (la plantilla y sus hojas quedan) ---
+router.delete('/templates/:id/rows', requireAdmin, async (req, res) => {
+  const result = await db.run('DELETE FROM rows WHERE template_id = $1', [req.params.id]);
+  res.json({ ok: true, deleted: result.rowCount });
+});
+
+// --- Admin: vaciar las filas cargadas de todas las plantillas ---
+// Plantillas, dependencias y asignaciones no se tocan.
+router.delete('/rows', requireAdmin, async (req, res) => {
+  const result = await db.run('DELETE FROM rows');
+  res.json({ ok: true, deleted: result.rowCount });
+});
+
 // --- Admin: eliminar una fila cargada ---
 router.delete('/rows/:id', requireAdmin, async (req, res) => {
   await db.run('DELETE FROM rows WHERE id = $1', [req.params.id]);

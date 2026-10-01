@@ -31,6 +31,30 @@ export default function TemplateData() {
     load();
   }
 
+  async function handleClearTemplate() {
+    if (rows.length === 0) {
+      alert('Esta plantilla no tiene datos cargados.');
+      return;
+    }
+    const answer = prompt(
+      `Se van a borrar las ${rows.length} filas cargadas en "${template.name}" (todas sus hojas).\n` +
+        'La plantilla y sus columnas NO se borran.\n' +
+        'Esta acción no se puede deshacer: descargá antes el Excel si lo necesitás.\n\n' +
+        'Para confirmar, escribí BORRAR:'
+    );
+    if (answer === null) return;
+    if (answer.trim().toUpperCase() !== 'BORRAR') {
+      alert('No se borró nada: no escribiste BORRAR.');
+      return;
+    }
+    try {
+      await api.clearTemplateRows(id);
+    } catch (err) {
+      setError(err.message);
+    }
+    load();
+  }
+
   if (!template) return <div className="page">{error || 'Cargando...'}</div>;
 
   return (
@@ -39,6 +63,7 @@ export default function TemplateData() {
         <h1>{template.name} — datos cargados</h1>
         <div>
           <a href={`/api/templates/${id}/export`} className="button">Descargar Excel</a>
+          <button className="link-button danger" onClick={handleClearTemplate}>Vaciar datos</button>
           <Link to="/admin" className="link-button">Volver</Link>
         </div>
       </header>
